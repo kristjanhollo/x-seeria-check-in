@@ -1,8 +1,58 @@
-// Initialize socket connection
-const socket = io();
+const API_PATH = '/api/competition';
+const POLL_MS = 2000;
 
-// Define API base URL
 const API_BASE_URL = 'https://discgolfmetrix.com/api.php?content=result&id=';
+
+async function fetchCompetition() {
+    const r = await fetch(API_PATH, { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+}
+
+async function postCompetition(body) {
+    const r = await fetch(API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+}
+
+function applyPayload(data) {
+    if (data.groups) {
+        groups = data.groups;
+        displayGroups(groups);
+    }
+    if (data.title !== undefined) {
+        competitionTitle.textContent = data.title;
+        document.title = data.title;
+    }
+    if (data.currentApiUrl !== undefined) {
+        const idMatch = data.currentApiUrl.match(/id=(\d+)/);
+        if (idMatch && idMatch[1]) {
+            apiIdInput.value = idMatch[1];
+        } else {
+            apiIdInput.value = '';
+        }
+    }
+    if (data.counts) {
+        checkedInCounter.textContent = data.counts.checkedInUsers;
+        totalUsers.textContent = data.counts.totalUsers;
+    }
+    if (data.notice && data.notice.text) {
+        showStatusMessage(data.notice.text, data.notice.type === 'error');
+    }
+}
+
+async function pollOnce() {
+    try {
+        const data = await fetchCompetition();
+        applyPayload(data);
+    } catch (e) {
+        console.error(e);
+    }
+}
 
 // Get DOM elements
 const groupList = document.getElementById("groupList");
@@ -109,11 +159,18 @@ function displayGroups(groups) {
             `;
 
             const checkbox = li.querySelector('input[type="checkbox"]');
-            checkbox.addEventListener('change', function () {
-                socket.emit('checkInUser', {
-                    username: user.username,
-                    checkedIn: this.checked
-                });
+            checkbox.addEventListener('change', async function () {
+                try {
+                    const data = await postCompetition({
+                        action: 'checkInUser',
+                        username: user.username,
+                        checkedIn: this.checked
+                    });
+                    applyPayload(data);
+                } catch (e) {
+                    console.error(e);
+                    showStatusMessage('Could not update check-in', true);
+                }
             });
 
             // If any user is not checked in, the group is not fully checked in
@@ -138,11 +195,18 @@ function displayGroups(groups) {
             groupItem.classList.remove('hidden');
         }
 
-        groupHeader.querySelector('.group-checkbox').addEventListener('change', function () {
-            socket.emit('checkInGroup', {
-                groupName: group.groupName,
-                checkedIn: this.checked
-            });
+        groupHeader.querySelector('.group-checkbox').addEventListener('change', async function () {
+            try {
+                const data = await postCompetition({
+                    action: 'checkInGroup',
+                    groupName: group.groupName,
+                    checkedIn: this.checked
+                });
+                applyPayload(data);
+            } catch (e) {
+                console.error(e);
+                showStatusMessage('Could not update group check-in', true);
+            }
         });
 
         groupItem.appendChild(groupHeader);
@@ -313,40 +377,41 @@ searchInput.addEventListener('input', function() {
 filterButton.addEventListener('click', toggleFilter);
 
 // Update data button click
-updateDataBtn.addEventListener('click', function() {
-    socket.emit('updateDataFromAPI'); // Request to update data from API
-    
-    // Provide visual feedback
+updateDataBtn.addEventListener('click', async function () {
     updateDataBtn.textContent = 'Updating...';
     updateDataBtn.disabled = true;
-    
-    // Reset button after 1.5 seconds
-    setTimeout(() => {
+    try {
+        const data = await postCompetition({ action: 'refreshFromApi' });
+        applyPayload(data);
+    } catch (e) {
+        console.error(e);
+        showStatusMessage('Failed to refresh data', true);
+    } finally {
         updateDataBtn.textContent = 'Update Data';
         updateDataBtn.disabled = false;
-    }, 1500);
+    }
 });
 
 // Change API button click
-changeApiBtn.addEventListener('click', function() {
+changeApiBtn.addEventListener('click', async function () {
     const competitionId = apiIdInput.value.trim();
-    if (competitionId) {
-        // Provide visual feedback
-        changeApiBtn.textContent = 'Loading...';
-        changeApiBtn.disabled = true;
-        
-        // Extract just the ID if a full URL was pasted
+    if (!competitionId) {
+        showStatusMessage('Please enter a valid competition ID', true);
+        return;
+    }
+    changeApiBtn.textContent = 'Loading...';
+    changeApiBtn.disabled = true;
+    try {
         const cleanId = extractCompetitionId(competitionId);
         const newApiUrl = API_BASE_URL + cleanId;
-        socket.emit('changeApiUrl', newApiUrl);
-        
-        // Reset button after 1.5 seconds
-        setTimeout(() => {
-            changeApiBtn.textContent = 'Change Competition';
-            changeApiBtn.disabled = false;
-        }, 1500);
-    } else {
-        showStatusMessage('Please enter a valid competition ID', true);
+        const data = await postCompetition({ action: 'changeApiUrl', apiUrl: newApiUrl });
+        applyPayload(data);
+    } catch (e) {
+        console.error(e);
+        showStatusMessage('Failed to load competition', true);
+    } finally {
+        changeApiBtn.textContent = 'Change Competition';
+        changeApiBtn.disabled = false;
     }
 });
 
@@ -358,43 +423,6 @@ apiIdInput.addEventListener('keypress', function(event) {
     }
 });
 
-// ===== SOCKET EVENT HANDLERS =====
-
-// Receive updated groups from the server
-socket.on('loadGroups', (data) => {
-    groups = data; // Store the groups data
-    displayGroups(groups); // Display groups and maintain search filter
-});
-
-// Receive competition title from the server
-socket.on('updateTitle', (title) => {
-    competitionTitle.textContent = title;
-    document.title = title; // Update page title as well
-});
-
-// Receive current API URL from the server
-socket.on('currentApiUrl', (url) => {
-    // Extract just the ID from the URL
-    const idMatch = url.match(/id=(\d+)/);
-    if (idMatch && idMatch[1]) {
-        apiIdInput.value = idMatch[1];
-    } else {
-        apiIdInput.value = '';
-    }
-});
-
-// Receive API success message
-socket.on('apiSuccess', (message) => {
-    showStatusMessage(message);
-});
-
-// Receive API error message
-socket.on('apiError', (message) => {
-    showStatusMessage(message, true);
-});
-
-// Update the checked-in counter
-socket.on('checkedInCount', (data) => {
-    checkedInCounter.textContent = data.checkedInUsers; // Update checked-in count
-    totalUsers.textContent = data.totalUsers; // Update total user count
-});
+// Poll server state so multiple devices stay in sync (replaces Socket.IO on Vercel)
+pollOnce();
+setInterval(pollOnce, POLL_MS);

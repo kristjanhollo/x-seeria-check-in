@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/competition.js": {
+      "maxDuration": 30
+    }
+  }
+}
