@@ -4,17 +4,13 @@
   "description": "Event Check-In System with Group and Individual Search and Real-time Updates",
   "private": true,
   "scripts": {
-    "dev": "vercel dev",
-    "start": "vercel dev"
+    "dev": "npx --yes vercel@latest dev",
+    "start": "npx --yes vercel@latest dev"
   },
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
     "@upstash/redis": "^1.38.0",
     "axios": "^0.27.2"
-  },
-  "devDependencies": {
-    "nodemon": "^2.0.15",
-    "vercel": "^41.0.0"
   }
 }
