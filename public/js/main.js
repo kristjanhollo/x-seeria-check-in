@@ -28,13 +28,17 @@ function applyPayload(data) {
         competitionTitle.textContent = data.title;
         document.title = data.title;
     }
-    if (data.currentApiUrl !== undefined) {
-        const idMatch = data.currentApiUrl.match(/id=(\d+)/);
-        if (idMatch && idMatch[1]) {
-            apiIdInput.value = idMatch[1];
-        } else {
-            apiIdInput.value = '';
-        }
+    if (data.currentApiUrl !== undefined && document.activeElement !== apiIdInput) {
+        const fromField =
+            data.currentCompetitionId != null && String(data.currentCompetitionId).trim() !== ''
+                ? String(data.currentCompetitionId).trim()
+                : '';
+        const fromUrl = (() => {
+            const idMatch = data.currentApiUrl.match(/id=(\d+)/);
+            return idMatch && idMatch[1] ? idMatch[1] : '';
+        })();
+        const id = fromField || fromUrl || extractCompetitionId(data.currentApiUrl);
+        apiIdInput.value = /^\d+$/.test(id) ? id : '';
     }
     if (data.counts) {
         checkedInCounter.textContent = data.counts.checkedInUsers;
