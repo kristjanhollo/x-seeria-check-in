@@ -5,15 +5,13 @@ module.exports = async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
 
     try {
-        let state = await store.getState();
-        state = await logic.ensureInitialized(state);
+        const meta = await store.getMeta();
+        let competitionId = logic.normalizeStoredCompetitionId(meta);
+        await logic.ensureInitialized(competitionId);
 
         if (req.method === 'GET') {
-            await store.setState(state);
-            return res.status(200).json({
-                ...logic.toClientPayload(state),
-                notice: null
-            });
+            const payload = await logic.toClientPayload(competitionId);
+            return res.status(200).json({ ...payload, notice: null });
         }
 
         if (req.method === 'POST') {
@@ -24,35 +22,32 @@ module.exports = async (req, res) => {
 
             switch (action) {
                 case 'checkInUser': {
-                    state = logic.updateUserCheckInStatus(
-                        state,
-                        rest.username,
-                        rest.checkedIn
-                    );
+                    // Atomic single-field write — safe even if many people check in at once.
+                    await store.setUserStatus(competitionId, rest.username, rest.checkedIn);
                     break;
                 }
                 case 'checkInGroup': {
-                    state = logic.updateGroupCheckInStatus(
-                        state,
-                        rest.groupName,
-                        rest.checkedIn
-                    );
+                    const roster = await store.getRoster(competitionId);
+                    const group =
+                        roster && roster.groups.find((g) => g.groupName === rest.groupName);
+                    const usernames = group ? group.users.map((u) => u.username) : [];
+                    await store.setGroupStatus(competitionId, usernames, rest.checkedIn);
                     break;
                 }
                 case 'changeApiUrl': {
-                    const result = await logic.fetchPlayerData(state, rest.apiUrl);
-                    state = result.state;
+                    const result = await logic.fetchPlayerData(rest.apiUrl);
                     if (result.error) {
                         notice = { type: 'error', text: result.error };
                     } else {
+                        competitionId = result.competitionId;
+                        await store.setMeta({ currentCompetitionId: competitionId });
                         notice = { type: 'success', text: 'API data loaded successfully' };
                     }
                     break;
                 }
                 case 'refreshFromApi': {
-                    const apiUrl = logic.API_BASE_URL + state.currentCompetitionId;
-                    const result = await logic.fetchPlayerData(state, apiUrl);
-                    state = result.state;
+                    const apiUrl = logic.API_BASE_URL + competitionId;
+                    const result = await logic.fetchPlayerData(apiUrl);
                     if (result.error) {
                         notice = { type: 'error', text: result.error };
                     } else {
@@ -64,11 +59,8 @@ module.exports = async (req, res) => {
                     return res.status(400).json({ error: 'Unknown action' });
             }
 
-            await store.setState(state);
-            return res.status(200).json({
-                ...logic.toClientPayload(state),
-                notice
-            });
+            const payload = await logic.toClientPayload(competitionId);
+            return res.status(200).json({ ...payload, notice });
         }
 
         res.setHeader('Allow', ['GET', 'POST']);
