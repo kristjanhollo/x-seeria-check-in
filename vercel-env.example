@@ -1,10 +1,13 @@
-# Configure ONE complete writable REST pair in Vercel Production, then redeploy.
-UPSTASH_REDIS_REST_URL=
-UPSTASH_REDIS_REST_TOKEN=
+# Redis Cloud / Vercel Redis: use your existing connection string in Production.
+REDIS_URL=
 
-# Alternative to the pair above:
+# Alternatively, configure ONE complete writable REST pair, then redeploy:
+# UPSTASH_REDIS_REST_URL=
+# UPSTASH_REDIS_REST_TOKEN=
 # KV_REST_API_URL=
 # KV_REST_API_TOKEN=
+
+# A complete REST pair takes precedence over REDIS_URL. An incomplete pair does not.
 
 # Optional protection for changing/refreshing the globally selected competition:
 CHECKIN_ADMIN_PIN=

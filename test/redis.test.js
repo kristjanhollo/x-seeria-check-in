@@ -29,16 +29,22 @@ function deferred() {
     return { promise, resolve };
 }
 
-describe('real Redis with the actual Upstash SDK (requires redis-server and redis-cli)', { skip: !available }, () => {
+for (const transport of ['rest', 'tcp']) describe(`real Redis through ${transport} (requires redis-server and redis-cli)`, { skip: !available, concurrency: false }, () => {
     let harness;
     let redis;
     let originalAxiosGet;
     let prefix;
 
     before(async () => {
-        harness = await startRedisHarness();
+        harness = await startRedisHarness(transport === 'tcp' ? { password: 'test:@/%?' + randomUUID() } : {});
         process.env.UPSTASH_REDIS_REST_URL = harness.url;
-        process.env.UPSTASH_REDIS_REST_TOKEN = 'local-test-token';
+        if (transport === 'rest') {
+            process.env.UPSTASH_REDIS_REST_TOKEN = 'local-test-token';
+            delete process.env.REDIS_URL;
+        } else {
+            delete process.env.UPSTASH_REDIS_REST_TOKEN;
+            process.env.REDIS_URL = harness.tcpUrl;
+        }
         delete process.env.KV_REST_API_URL;
         delete process.env.KV_REST_API_TOKEN;
         process.env.VERCEL_ENV = 'production';
@@ -46,7 +52,7 @@ describe('real Redis with the actual Upstash SDK (requires redis-server and redi
         redis = store.getRedis();
         originalAxiosGet = axios.get;
     });
-    after(async () => { axios.get = originalAxiosGet; if (harness) await harness.close(); });
+    after(async () => { axios.get = originalAxiosGet; store.closeRedis(); if (harness) await harness.close(); });
     beforeEach(async () => {
         harness.fail = false;
         prefix = 'checkin:test:' + randomUUID() + ':';
@@ -236,16 +242,45 @@ describe('real Redis with the actual Upstash SDK (requires redis-server and redi
         assert.equal((await store.getMeta()).currentCompetitionId, '101');
     });
 
+    if (transport === 'tcp') test('wrong REDIS_URL credentials fail without switching to local memory', async () => {
+        await select('202');
+        const originalUrl = process.env.REDIS_URL;
+        const wrongUrl = new URL(originalUrl);
+        wrongUrl.password = 'incorrect-test-password';
+        process.env.REDIS_URL = wrongUrl.toString();
+        try {
+            const result = await request(undefined, 'GET');
+            assert.equal(result.statusCode, 503);
+            assert.equal(result.body.code, 'REDIS_UNAVAILABLE');
+        } finally {
+            process.env.REDIS_URL = originalUrl;
+            store.closeRedis();
+            redis = store.getRedis();
+        }
+        assert.equal((await store.getMeta()).currentCompetitionId, '202');
+    });
+
     test('health endpoint is read-only and reports persistent keys', async () => {
         await select();
+        const before = await store.getSnapshot('101');
         harness.commands.length = 0;
         const res = response();
         await health({ method: 'GET' }, res);
         assert.equal(res.statusCode, 200);
         assert.equal(res.body.storage, 'redis');
+        assert.equal(res.body.connection, transport);
         assert.equal(res.body.ttlSeconds.selection, -1);
         assert.equal(res.body.ttlSeconds.checkIns, -1);
         assert.ok(harness.commands.every(args => ['ping', 'get', 'ttl'].includes(args[0].toLowerCase())));
+        assert.deepEqual(await store.getSnapshot('101'), before);
+    });
+
+    test('simultaneous first reads share one connection and retain the event', async () => {
+        const selected = await select('202');
+        store.closeRedis();
+        redis = store.getRedis();
+        const payloads = await Promise.all(Array.from({ length: 20 }, () => logic.getCurrentPayload()));
+        assert.ok(payloads.every(payload => payload.currentCompetitionId === selected.currentCompetitionId));
     });
 
     test('diagnostic script verifies writes and deletes its disposable key', async () => {

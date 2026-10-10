@@ -4,7 +4,8 @@ const store = require('../lib/stateStore');
 const logic = require('../lib/competitionLogic');
 
 function clearConfiguration() {
-    for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'CHECKIN_ALLOW_MEMORY', 'CHECKIN_REDIS_PREFIX', 'VERCEL', 'VERCEL_ENV', 'NODE_ENV']) delete process.env[name];
+    store.closeRedis();
+    for (const name of ['REDIS_URL', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'CHECKIN_ALLOW_MEMORY', 'CHECKIN_REDIS_PREFIX', 'VERCEL', 'VERCEL_ENV', 'NODE_ENV']) delete process.env[name];
 }
 
 test('missing Redis settings never use per-instance memory on Vercel', async () => {
@@ -27,6 +28,19 @@ test('Vercel KV REST variable pair is accepted', () => {
     process.env.KV_REST_API_URL = 'https://example.upstash.io';
     process.env.KV_REST_API_TOKEN = 'test-token';
     assert.ok(store.getRedis());
+});
+
+test('REDIS_URL works with an incomplete Upstash REST configuration', () => {
+    clearConfiguration();
+    process.env.REDIS_URL = 'rediss://default:test-password@example.com:6379';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://example.upstash.io';
+    assert.ok(store.getRedis());
+});
+
+test('malformed REDIS_URL fails safely without leaking its credentials', () => {
+    clearConfiguration();
+    process.env.REDIS_URL = 'https://default:secret@example.com';
+    assert.throws(() => store.getRedis(), error => error.code === 'REDIS_CONFIG' && !error.message.includes('secret'));
 });
 
 test('preview and production keys are isolated by default', () => {

@@ -6,7 +6,7 @@ The supplied code has several independent causes for the reported symptoms. This
 
 | Finding in the original files | Effect |
 | --- | --- |
-| Missing `UPSTASH_REDIS_REST_URL` or `UPSTASH_REDIS_REST_TOKEN` silently enables `global.__checkin`; `KV_REST_API_*` is ignored. | Different Vercel instances can show different competitions and check-ins. |
+| Missing `UPSTASH_REDIS_REST_URL` or `UPSTASH_REDIS_REST_TOKEN` silently enables `global.__checkin`; `REDIS_URL` and `KV_REST_API_*` are ignored. | Different Vercel instances can show different competitions and check-ins even when a Redis database is connected in Vercel. |
 | `setMeta()` sets a 24-hour expiry. Only changing competitions renews it; polling and checking in do not. | Once it expires, the app falls back to competition `3529162`, potentially displaying its earlier check-ins. |
 | Check-in requests contain only a player/group name and a boolean. | A click made while viewing competition A can update the current competition B, particularly when both contain `Group 1`. |
 | Upstash JSON-deserializes values by default, while the payload tests `status === '1'`. | A numeric `1` is displayed as unchecked. |
@@ -27,20 +27,27 @@ Overlay the ZIP onto your existing project, preserving these paths. Keep your ex
 | `main.js` | `js/main.js` |
 | `index.html`, `package.json`, `package-lock.json`, `vercel.json` | Project root |
 
-Also include the new `lib/errors.js`, `api/health.js`, `scripts/check-redis.js` and `test/` files supplied in the ZIP. Deploy the frontend and backend together, then reload every open check-in tab. The updated backend rejects old check-in requests that lack event context.
+Also include the new `lib/errors.js`, `lib/tcpRedis.js`, `api/health.js`, `scripts/check-redis.js` and `test/` files supplied in the ZIP. Include both package files so Vercel installs the new `redis` dependency. Deploy the frontend and backend together, then reload every open check-in tab. The updated backend rejects old check-in requests that lack event context.
 
 This app uses exported Node.js handlers in `/api`; it does not require an always-running `server.js` process or Socket.IO server. Keep your existing Vercel project configuration for this static frontend and API functions.
 
 ## Vercel environment variables
 
-In Project Settings → Environment Variables, configure **one complete writable REST credential pair for Production**, then redeploy:
+In Project Settings → Environment Variables, configure **one writable Redis connection for Production**, then redeploy:
 
 | Option | Required variables |
 | --- | --- |
+| Redis Cloud / Vercel Redis (your linked integration) | `REDIS_URL` |
 | Upstash REST | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` |
 | Vercel KV / Upstash integration | `KV_REST_API_URL`, `KV_REST_API_TOKEN` |
 
-Use the writable token. A read-only token can answer health reads but cannot save check-ins. `REDIS_URL` alone is a TCP connection string; this project's `@upstash/redis` client requires the REST URL and token above.
+For your current `REDIS_URL` plus `UPSTASH_REDIS_REST_URL` setup, no Upstash token is needed: this updated package uses `REDIS_URL` through the official `redis` Node.js client. The URL must start with `redis://` or `rediss://` and include the credentials provided by your database integration. Keep it server-side; never copy its password into frontend code.
+
+A complete Upstash REST pair takes precedence, followed by a complete KV REST pair, then `REDIS_URL`. An incomplete REST pair does not prevent use of `REDIS_URL`. Connection failures always return an error; the app never silently switches to another database or local memory. If you want to use Redis Cloud and have complete credentials for an unrelated Upstash database, remove those REST settings to avoid selecting the wrong database.
+
+For either REST option, use the writable token. A read-only token can answer health reads but cannot save check-ins.
+
+The TCP client reuses one connection per function instance, shares connection setup across concurrent requests, and bounds connection/command waiting. Lost connections fail pending requests; subsequent requests can reconnect without resetting shared state.
 
 Optional settings:
 
@@ -59,7 +66,7 @@ Exact Metrix player names remain the status keys so existing check-ins are prese
 ## Verify the deployed connection
 
 1. Open the main app once, then open `https://YOUR-SITE.vercel.app/api/health`.
-2. Expect HTTP `200`, `ok: true`, `storage: "redis"`, the correct `currentCompetitionId`, and `ttlSeconds.selection` / `ttlSeconds.checkIns` equal to `-1` for initialized keys. A positive roster TTL is normal; `-2` means a key does not exist yet. HTTP `503` includes a safe configuration/connectivity error and never falls back to memory.
+2. Expect HTTP `200`, `ok: true`, `storage: "redis"`, `connection: "tcp"` for `REDIS_URL` (or `"rest"` for a REST pair), the correct `currentCompetitionId`, and `ttlSeconds.selection` / `ttlSeconds.checkIns` equal to `-1` for initialized keys. A positive roster TTL is normal; `-2` means a key does not exist yet. HTTP `503` includes a safe configuration/connectivity error and never falls back to memory.
 3. Open the app on two devices. Check in different people concurrently, then confirm both devices show both check-ins. Switch the competition intentionally and confirm the new event appears on both devices. Stale requests return `409` and reload the correct list.
 
 The health endpoint is read-only and labels write permission `not-tested`. To verify write/read permission too, run the supplied diagnostic locally with your server-side environment variables loaded. For Node.js 22 or later:
@@ -74,7 +81,7 @@ For an explicit, disposable local demonstration without Redis, `CHECKIN_ALLOW_ME
 
 ## Validation performed
 
-28 automated checks passed, using the actual `@upstash/redis` SDK against an isolated local Redis 7.2.4 server. They cover legacy key migration, 80 concurrent user writes, wrong-event group clicks, a switch during mutation validation, A→B→A revisions, roster refresh races, expiry, storage failure, optional organizer protection, and the diagnostic script's disposable key cleanup.
+55 automated checks passed, using both the actual `@upstash/redis` SDK over REST and the official `redis` client over TCP against isolated local Redis 7.2.4 servers. The TCP server requires authentication, including an encoded password containing punctuation. Checks cover legacy key migration, 80 concurrent user writes through each client, wrong-event group clicks, a switch during mutation validation, A→B→A revisions, roster refresh races, expiry, storage failure/recovery, incorrect credentials, simultaneous connection setup, optional organizer protection, and the diagnostic script's disposable key cleanup. Your live Vercel database has not been tested.
 
 Six additional checks executed the actual frontend script in a DOM environment, covering serialized polling/writes, capture of event context at the click, stale-request recovery, persistent connection errors, organizer PIN submission and literal rendering of player names.
 
@@ -87,4 +94,4 @@ npm test
 
 The Redis integration suite starts its own temporary local instance when `redis-server` and `redis-cli` are installed. It is explicitly skipped if those binaries are unavailable. It never connects to your Production database. You can supply nonstandard executable paths using `CHECKIN_TEST_REDIS_BINARY` and `CHECKIN_TEST_REDIS_CLI`.
 
-Official references: [Vercel Node.js functions](https://vercel.com/docs/functions/runtimes/node-js), [Upstash JSON deserialization](https://upstash.com/docs/redis/sdks/ts/advanced), [Upstash Lua EVAL](https://upstash.com/docs/redis/sdks/ts/commands/scripts/eval).
+Official references: [Vercel Node.js functions](https://vercel.com/docs/functions/runtimes/node-js), [Redis Cloud's Vercel integration](https://redis.io/docs/latest/operate/rc/cloud-integrations/vercel/), [Node-Redis client](https://github.com/redis/node-redis), [Upstash JSON deserialization](https://upstash.com/docs/redis/sdks/ts/advanced), [Upstash Lua EVAL](https://upstash.com/docs/redis/sdks/ts/commands/scripts/eval).

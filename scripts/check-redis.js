@@ -26,4 +26,4 @@ main().catch(error => {
     console.error(error.code || 'REDIS_CHECK_FAILED');
     console.error('Redis write/read verification failed. Check credentials, permissions and connectivity.');
     process.exitCode = 1;
-});
+}).finally(() => store.closeRedis());

@@ -14,13 +14,13 @@ const cli = process.env.CHECKIN_TEST_REDIS_CLI || (binary.includes('/') ? path.j
 const available = spawnSync(binary, ['--version'], { stdio: 'ignore' }).status === 0 &&
     spawnSync(cli, ['--version'], { stdio: 'ignore' }).status === 0;
 
-async function startRedisHarness() {
+async function startRedisHarness({ password } = {}) {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'checkin-test-'));
     const reservation = net.createServer();
     await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
     const port = reservation.address().port;
     await new Promise(resolve => reservation.close(resolve));
-    const child = spawn(binary, ['--bind', '127.0.0.1', '--port', String(port), '--save', '', '--appendonly', 'no', '--dir', dir], { stdio: 'ignore' });
+    const child = spawn(binary, ['--bind', '127.0.0.1', '--port', String(port), '--save', '', '--appendonly', 'no', '--dir', dir, ...(password ? ['--requirepass', password] : [])], { stdio: 'ignore' });
     try {
         await new Promise((resolve, reject) => {
             let finished = false;
@@ -47,12 +47,39 @@ async function startRedisHarness() {
         await rm(dir, { recursive: true, force: true });
         throw error;
     }
-    const harness = { commands: [], fail: false };
+    const harness = { commands: [] };
+    const connections = new Set();
+    let fail = false;
+    Object.defineProperty(harness, 'fail', {
+        get: () => fail,
+        set(value) {
+            fail = value;
+            if (fail) for (const socket of connections) socket.destroy();
+        }
+    });
+    // A transparent TCP proxy lets the same failure test cut a real socket too.
+    const tcpServer = net.createServer(socket => {
+        if (fail) { socket.destroy(); return; }
+        const upstream = net.connect({ host: '127.0.0.1', port });
+        for (const connection of [socket, upstream]) {
+            connections.add(connection);
+            connection.on('error', () => {});
+            connection.on('close', () => {
+                connections.delete(connection);
+                socket.destroy();
+                upstream.destroy();
+            });
+        }
+        socket.pipe(upstream);
+        upstream.pipe(socket);
+    });
+    await new Promise(resolve => tcpServer.listen(0, '127.0.0.1', resolve));
+    harness.tcpUrl = `redis://${password ? 'default:' + encodeURIComponent(password) + '@' : ''}127.0.0.1:${tcpServer.address().port}`;
     const encode = value => Array.isArray(value) ? value.map(encode) : typeof value === 'string' ? Buffer.from(value).toString('base64') : value;
     async function command(args) {
         harness.commands.push(args.map(String));
         if (harness.fail) return { error: 'Injected test storage failure' };
-        const { stdout } = await exec(cli, ['--json', '-h', '127.0.0.1', '-p', String(port), ...args.map(String)]);
+        const { stdout } = await exec(cli, ['--json', '-h', '127.0.0.1', '-p', String(port), ...(password ? ['--no-auth-warning', '--user', 'default', '--pass', password] : []), ...args.map(String)]);
         if (stdout.startsWith('error:')) return { error: stdout.trim() };
         let result = JSON.parse(stdout);
         // redis-cli's JSON representation uses a map for HGETALL; Upstash uses
@@ -78,6 +105,8 @@ async function startRedisHarness() {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     harness.url = `http://127.0.0.1:${server.address().port}`;
     harness.close = async () => {
+        for (const socket of connections) socket.destroy();
+        await new Promise(resolve => tcpServer.close(resolve));
         await new Promise(resolve => server.close(resolve));
         const exited = new Promise(resolve => child.once('exit', resolve));
         child.kill('SIGTERM');
