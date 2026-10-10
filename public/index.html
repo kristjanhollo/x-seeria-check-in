@@ -28,8 +28,10 @@
             <div class="api-input-wrapper">
                 <div class="api-prefix">https://discgolfmetrix.com/api.php?content=result&id=</div>
                 <input type="text" id="apiIdInput" placeholder="3529162">
+                <input type="password" id="adminPinInput" placeholder="Organizer PIN" autocomplete="off" aria-label="Organizer PIN" hidden>
                 <button id="changeApiBtn" class="btn btn-success">Change Competition</button>
             </div>
+            <p>Changing competition updates every device.</p>
             <div id="statusMessage" class="status-message hidden"></div>
         </div>
 
@@ -58,7 +60,7 @@
         </svg>
     </button>
 
-    <script src="js/main.js"></script>
+    <script src="/js/checkin-v3.js?v=3"></script>
 </body>
 
 </html>

@@ -1,4 +1,5 @@
 {
+  "outputDirectory": "public",
   "functions": {
     "api/competition.js": {
       "maxDuration": 30
@@ -9,12 +10,22 @@
   },
   "headers": [
     {
-      "source": "/js/main.js",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      "source": "/js/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
     },
     {
       "source": "/",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
     }
   ]
 }
