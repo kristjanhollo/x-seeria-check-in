@@ -2,6 +2,19 @@
   "functions": {
     "api/competition.js": {
       "maxDuration": 30
+    },
+    "api/health.js": {
+      "maxDuration": 15
     }
-  }
+  },
+  "headers": [
+    {
+      "source": "/js/main.js",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    },
+    {
+      "source": "/",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    }
+  ]
 }

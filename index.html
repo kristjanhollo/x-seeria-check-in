@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disc Golf Check-In System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header with Title and Buttons -->
+        <div class="header">
+            <h1 id="competitionTitle">Disc Golf Check-In System</h1>
+            <div class="header-buttons">
+                <button id="filterButton" class="btn btn-warning">Filter OFF</button>
+                <button id="updateDataBtn" class="btn btn-primary">Update Data</button>
+            </div>
+        </div>
+
+        <!-- API URL Input Section -->
+        <div class="api-input-container">
+            <h3>Change Competition ID</h3>
+            <div class="api-input-wrapper">
+                <div class="api-prefix">https://discgolfmetrix.com/api.php?content=result&id=</div>
+                <input type="text" id="apiIdInput" placeholder="3529162">
+                <input type="password" id="adminPinInput" placeholder="Organizer PIN" autocomplete="off" aria-label="Organizer PIN" hidden>
+                <button id="changeApiBtn" class="btn btn-success">Change Competition</button>
+            </div>
+            <p>Changing competition updates every device.</p>
+            <div id="statusMessage" class="status-message hidden"></div>
+        </div>
+
+        <!-- Counter for checked-in users -->
+        <div class="counter">
+            <span><span id="checkedInCounter" class="counter-numbers">0</span> people out of <span id="totalUsers"
+                    class="counter-numbers">0</span> have checked in.</span>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="search-bar">
+            <input type="text" id="searchInput" placeholder="Search for group or individual...">
+        </div>
+
+        <!-- Group List -->
+        <div id="groupList" class="group-list">
+            <!-- JavaScript will dynamically generate group items here -->
+        </div>
+    </div>
+
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" class="feather feather-moon">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+    </button>
+
+    <script src="js/main.js?v=2"></script>
+</body>
+
+</html>

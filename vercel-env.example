@@ -1,0 +1,16 @@
+# Configure ONE complete writable REST pair in Vercel Production, then redeploy.
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+
+# Alternative to the pair above:
+# KV_REST_API_URL=
+# KV_REST_API_TOKEN=
+
+# Optional protection for changing/refreshing the globally selected competition:
+CHECKIN_ADMIN_PIN=
+
+# Only the Metrix roster cache expires; competition selection and check-ins persist.
+CHECKIN_ROSTER_TTL_SECONDS=86400
+
+# Usually leave unset. Production automatically retains the existing checkin:v1: keys.
+# CHECKIN_REDIS_PREFIX=checkin:v1

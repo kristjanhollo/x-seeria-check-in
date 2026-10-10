@@ -5,7 +5,9 @@
   "private": true,
   "scripts": {
     "dev": "npx --yes vercel@latest dev",
-    "start": "npx --yes vercel@latest dev"
+    "start": "npx --yes vercel@latest dev",
+    "test": "node --test test/*.test.js",
+    "check:redis": "node scripts/check-redis.js"
   },
   "author": "Your Name",
   "license": "MIT",
